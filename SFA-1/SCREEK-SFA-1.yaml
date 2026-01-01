@@ -1,0 +1,177 @@
+# =====================================================================
+#  #####   #####  ######  ####### ####### #    # 
+# #     # #     # #     # #       #       #   #  
+# #       #       #     # #       #       #  #   
+#  #####  #       ######  #####   #####   ###    
+#       # #       #   #   #       #       #  #   
+# #     # #     # #    #  #       #       #   #  
+#  #####   #####  #     # ####### ####### #    #
+# 
+# DIY Formaldehyde Sensor SFA-1
+# https://screek.io/sfa-1
+# =====================================================================
+esphome:
+  name: screek-sfa-sensor-sfa-1
+  comment: Screek SFA Sensor SFA-1
+  friendly_name: SFA Sensor SFA-1
+  name_add_mac_suffix: True
+  min_version: "2025.10.0"
+  platformio_options:
+    board_build.flash_mode: dio
+  project: 
+    name: Screek.SFA_Sensor_SFA-1
+    version: 25.07.12-1
+  
+esp32:
+  board: lolin_c3_mini
+  framework:
+    type: esp-idf
+
+
+logger:
+
+api:
+
+ota:
+  - platform: esphome
+    password: !secret sfa_1_ota_password
+
+web_server:
+  port: 80
+  version: 3
+
+wifi:
+  power_save_mode: HIGH
+  ap:
+    ssid: "SFA-SENSOR-SFA-1"
+
+captive_portal:
+
+improv_serial:
+
+i2c:
+  sda: GPIO4
+  scl: GPIO5
+  scan: true
+  id: bus_a
+
+binary_sensor:
+  - platform: status
+    name: Online
+    id: ink_ha_connected
+
+text_sensor:
+  - platform: template
+    name: "Formaldehyde Status"
+    id: hcho_status
+    icon: mdi:alert-decagram
+    update_interval: 5s
+    lambda: |-
+      if (isnan(id(formaldehyde_raw).state) || isnan(id(temperature_c).state)) {
+        return {"Unknown"};
+      }
+      const float T = id(temperature_c).state;
+      float hcho_mg = id(formaldehyde_raw).state * 30.03 / 22.4 * 273 / (273 + T) * 100 * 1000 / 101325 / 1000;
+      if (hcho_mg <= 0.05) {
+        return {"Excellent"};
+      } else if (hcho_mg <= 0.1) {
+        return {"Good"};
+      } else if (hcho_mg <= 0.3) {
+        return {"Moderate"};
+      } else {
+        return {"Unhealthy"};
+      }
+      
+sensor:
+  - platform: internal_temperature
+    name: "ESP Temperature"
+    unit_of_measurement: °C
+    device_class: TEMPERATURE
+    update_interval: 30s
+    entity_category: "diagnostic"
+
+  - platform: uptime
+    name: Uptime
+    id: sys_uptime
+    update_interval: 60s
+
+  - platform: wifi_signal 
+    name: RSSI
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+
+  - platform: template
+    id: esp_memory
+    icon: mdi:memory
+    name: ESP Free Memory
+    lambda: return heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+    unit_of_measurement: 'kB'
+    state_class: measurement
+    entity_category: "diagnostic"
+    disabled_by_default: True
+    update_interval: 1s
+
+  - platform: template
+    name: "HCHO (mg/m³)"
+    unit_of_measurement: "mg/m³"
+    accuracy_decimals: 3
+    icon: mdi:chemical-weapon  # 通常用于气体或污染物
+    lambda: |-
+      if (isnan(id(formaldehyde_raw).state) || isnan(id(temperature_c).state)) {
+        return NAN;
+      }
+      const float T = id(temperature_c).state;
+      return id(formaldehyde_raw).state * 30.03 / 22.4 * 273 / (273 + T) * 100 * 1000 / 101325 / 1000;
+
+  - platform: template
+    name: "HCHO (ppm)"
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 3
+    icon: mdi:chemical-weapon  # 与气体单位ppm更直观匹配
+    lambda: |-
+      if (isnan(id(formaldehyde_raw).state)) {
+        return NAN;
+      }
+      return id(formaldehyde_raw).state / 1000.0;
+
+  - platform: sfa30
+    formaldehyde:
+      name: "Formaldehyde"
+      id: formaldehyde_raw
+    temperature:
+      name: "Temperature(Ref)"
+      entity_category: "diagnostic"
+      id: temperature_c
+    humidity:
+      name: "Humidity(Ref)"
+      entity_category: "diagnostic"
+      id: humidity_percent
+    update_interval: 1s
+
+light:
+  - platform: status_led
+    name: sys_status
+    pin: 
+      number: GPIO12
+      ignore_pin_validation_error: true
+    internal: True
+    restore_mode: ALWAYS_OFF
+
+  - platform: status_led
+    name: sys_status
+    pin: 
+      number: GPIO13
+      ignore_pin_validation_error: true
+    internal: True
+    restore_mode: ALWAYS_OFF
+
+button:
+  - platform: restart
+    icon: mdi:power-cycle
+    name: "ESP Reboot"
+
+  - platform: factory_reset
+    disabled_by_default: True
+    name: Factory Reset
+    id: factory_reset_all
